@@ -22,9 +22,3 @@ docker run -d \
   -v $(pwd)/networkos_data:/root \
   -e VNC_PASSWORD=mypass \
   networkos
-
-### What was added
-1.  **Security Instructions:** Added the `-e VNC_PASSWORD` flag to the "Run" command so users know how to set their own password.
-2.  **XFCE Mention:** Updated the description to reflect the move from LXDE to XFCE.
-3.  **Badges:** Added a "Password-Protected" badge at the top to make it look professional.
-4.  **Auto-Scaling Note:** Explicitly mentioned that the browser URL now handles scaling automatically.
