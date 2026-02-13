@@ -25,10 +25,11 @@ RUN dpkg --add-architecture i386 && mkdir -pm755 /etc/apt/keyrings && \
     wget -NP /etc/apt/sources.list.d/ https://dl.winehq.org/wine-builds/ubuntu/dists/jammy/winehq-jammy.sources && \
     apt-get update && apt-get install --install-recommends -y winehq-stable
 
-# 4. Set vnc.html as Default Page
-RUN ln -s /usr/share/novnc/vnc.html /usr/share/novnc/index.html
+# 4. Set vnc.html as Default + AUTO-RESIZE logic
+# This creates an index.html that redirects to vnc.html with the scaling parameter enabled
+RUN echo '<html><!-- Developed by LSmithx2 --><head><title>NetworkOS VNC</title><meta http-equiv="refresh" content="0; url=vnc.html?autoconnect=true&resize=scale"></head></html>' > /usr/share/novnc/index.html
 
-# 5. Startup Script
+# 5. Startup Script (Created inside the image)
 RUN echo '#!/bin/bash\n\
 rm -rf /tmp/.X11-unix /tmp/.X*-lock\n\
 vncserver -SecurityTypes None -geometry $VNC_RESOLUTION $DISPLAY\n\
