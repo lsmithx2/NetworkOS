@@ -25,6 +25,7 @@ RUN dpkg --add-architecture i386
 # Fixes:
 # - enable Universe (masscan often lives there)
 # - preseed wireshark prompt (even if not on desktop, package can prompt)
+# - add nginx + htpasswd tooling for noVNC password protection (reliable across distros)
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends software-properties-common debconf-utils ca-certificates curl gnupg; \
@@ -36,6 +37,8 @@ RUN set -eux; \
       lxde-core lxterminal dbus dbus-x11 x11-xserver-utils \
       # VNC/noVNC
       tigervnc-standalone-server novnc websockify \
+      # noVNC auth front-end (WebSocket-safe)
+      nginx-light apache2-utils \
       # Base utilities
       wget curl gpg git python3 sudo ca-certificates \
       # Ping / ICMP utilities
@@ -119,15 +122,27 @@ show_trash=1
 show_mounts=1
 EOF
 
-# 6) Entrypoint (fix LXDE "No session for pid" + optional noVNC Basic Auth + init Wine)
+# 6) Entrypoint:
+# - fixes LXDE "No session for pid" by launching LXDE under dbus-launch
+# - initializes Wine prefix once
+# - implements reliable noVNC password protection using nginx basic auth (WebSocket-safe)
 RUN cat > /entrypoint.sh <<'EOF'
 #!/usr/bin/env bash
 set -e
 
+echo "[INFO] Starting container entrypoint..."
+
 DISP_NUM="${DISPLAY#:}"
 VNC_PORT="$((5900 + DISP_NUM))"
 
+# External port (published)
+NOVNC_PORT="${NOVNC_PORT:-8080}"
+
+# Internal port for websockify when auth is enabled
+NOVNC_INTERNAL_PORT=6080
+
 rm -rf /tmp/.X11-unix /tmp/.X*-lock || true
+touch /root/.Xauthority || true
 
 # Provide a runtime dir (prevents session/logind related errors in containers)
 export XDG_RUNTIME_DIR="/tmp/runtime-root"
@@ -155,23 +170,66 @@ vncserver "${DISPLAY}" \
   -geometry "${VNC_RESOLUTION}" \
   -xstartup /root/.vnc/xstartup
 
+echo "[INFO] VNC up on localhost:${VNC_PORT} (display ${DISPLAY})"
+
 # Initialize Wine on first boot (needs DISPLAY/X available)
 if [ ! -d /root/.wine ]; then
-  echo "Initializing Wine prefix..."
-  # Run in background so it doesn't block boot
+  echo "[INFO] Initializing Wine prefix..."
   (export DISPLAY="${DISPLAY}"; wineboot --init >/tmp/wineboot.log 2>&1 || true) &
 fi
 
-# Start noVNC (optional Basic Auth)
+# Start noVNC
+# If NOVNC_PASSWORD is set, use nginx basic auth in front of websockify
 if [ -n "${NOVNC_PASSWORD:-}" ]; then
-  exec /usr/share/novnc/utils/launch.sh \
-    --vnc "localhost:${VNC_PORT}" \
-    --listen "0.0.0.0:${NOVNC_PORT}" \
-    --basic-auth "${NOVNC_USER:-admin}:${NOVNC_PASSWORD}"
+  echo "[INFO] noVNC auth enabled via nginx basic auth"
+
+  # Start websockify bound to localhost only
+  websockify \
+    --web /usr/share/novnc/ \
+    --wrap-mode ignore \
+    "127.0.0.1:${NOVNC_INTERNAL_PORT}" \
+    "127.0.0.1:${VNC_PORT}" &
+
+  # Create htpasswd file
+  mkdir -p /etc/nginx
+  htpasswd -bc /etc/nginx/.htpasswd "${NOVNC_USER:-admin}" "${NOVNC_PASSWORD}"
+
+  # Nginx config with websocket support + basic auth
+  cat > /etc/nginx/conf.d/novnc.conf <<NGINXCONF
+server {
+  listen ${NOVNC_PORT};
+  server_name _;
+
+  auth_basic "NetworkOS";
+  auth_basic_user_file /etc/nginx/.htpasswd;
+
+  location / {
+    proxy_pass http://127.0.0.1:${NOVNC_INTERNAL_PORT};
+    proxy_http_version 1.1;
+
+    # WebSocket headers
+    proxy_set_header Upgrade \$http_upgrade;
+    proxy_set_header Connection "upgrade";
+
+    # Forwarded headers
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+  }
+}
+NGINXCONF
+
+  nginx -t
+  exec nginx -g "daemon off;"
 else
-  exec /usr/share/novnc/utils/launch.sh \
-    --vnc "localhost:${VNC_PORT}" \
-    --listen "0.0.0.0:${NOVNC_PORT}"
+  echo "[INFO] noVNC auth disabled (direct websockify)"
+
+  exec websockify \
+    --web /usr/share/novnc/ \
+    --wrap-mode ignore \
+    "0.0.0.0:${NOVNC_PORT}" \
+    "localhost:${VNC_PORT}"
 fi
 EOF
 RUN chmod +x /entrypoint.sh
