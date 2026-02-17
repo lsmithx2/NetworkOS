@@ -15,72 +15,91 @@ ENV NOVNC_PASSWORD=""
 # Wine defaults (you can override at runtime)
 ENV WINEDEBUG=-all
 
+# Angry IP Scanner version (GitHub release .deb)
+ARG IPSCAN_VERSION=3.9.3
+
 # 0) Enable 32-bit architecture for Wine (needed for many Windows apps)
 RUN dpkg --add-architecture i386
 
-# 1) Desktop + VNC/noVNC + browsers + network toolkit + ping + wine + Angry IP Scanner
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    # Desktop
-    lxde-core lxterminal dbus dbus-x11 x11-xserver-utils \
-    # VNC/noVNC
-    tigervnc-standalone-server novnc websockify \
-    # Base utilities
-    wget curl gpg git python3 sudo ca-certificates \
-    # Ping / ICMP utilities
-    iputils-ping iputils-tracepath \
-    # Networking tools (expanded)
-    iproute2 traceroute mtr dnsutils \
-    nmap masscan arp-scan netdiscover fping \
-    tcpdump tshark tcpflow wireshark \
-    iperf3 ethtool ipcalc net-tools lsof whois \
-    netcat-openbsd socat \
-    # Angry IP Scanner (Java GUI)
-    openjdk-17-jre ipscan \
-    # Wine (Windows apps) + common runtime deps
-    wine64 wine32 winetricks cabextract fonts-wine winbind \
-    # Wine GUI/runtime deps that often fix "wine not working" in containers
-    libgl1 libgl1-mesa-dri libasound2 libasound2-plugins libpulse0 \
-    fonts-dejavu-core fonts-dejavu-extra \
-    # Browser(s)
-    firefox \
-    # Chrome runtime deps that often matter in minimal images
-    fonts-liberation libatk-bridge2.0-0 libatk1.0-0 libcups2 \
-    libdrm2 libgbm1 libgtk-3-0 libnss3 libxss1 libxcomposite1 libxrandr2 \
-    libxdamage1 libxkbcommon0 xdg-utils \
-    && rm -rf /var/lib/apt/lists/*
+# 1) Desktop + VNC/noVNC + browsers + network toolkit + ping + wine
+# Fixes:
+# - enable Universe (masscan often lives there)
+# - preseed wireshark prompt (even if not on desktop, package can prompt)
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends software-properties-common debconf-utils ca-certificates curl gnupg; \
+    add-apt-repository -y universe; \
+    echo "wireshark-common wireshark-common/install-setuid boolean true" | debconf-set-selections; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      # Desktop
+      lxde-core lxterminal dbus dbus-x11 x11-xserver-utils \
+      # VNC/noVNC
+      tigervnc-standalone-server novnc websockify \
+      # Base utilities
+      wget curl gpg git python3 sudo ca-certificates \
+      # Ping / ICMP utilities
+      iputils-ping iputils-tracepath \
+      # Networking tools (expanded)
+      iproute2 traceroute mtr dnsutils \
+      nmap masscan arp-scan netdiscover fping \
+      tcpdump tshark tcpflow wireshark \
+      iperf3 ethtool ipcalc net-tools lsof whois \
+      netcat-openbsd socat \
+      # Angry IP Scanner dependency (Java)
+      openjdk-17-jre \
+      # Wine (Windows apps) + common runtime deps
+      wine64 wine32 winetricks cabextract fonts-wine winbind \
+      # Wine GUI/runtime deps that often fix "wine not working" in containers
+      libgl1 libgl1-mesa-dri libasound2 libasound2-plugins libpulse0 \
+      fonts-dejavu-core fonts-dejavu-extra \
+      # Browser(s)
+      firefox \
+      # Chrome runtime deps that often matter in minimal images
+      fonts-liberation libatk-bridge2.0-0 libatk1.0-0 libcups2 \
+      libdrm2 libgbm1 libgtk-3-0 libnss3 libxss1 libxcomposite1 libxrandr2 \
+      libxdamage1 libxkbcommon0 xdg-utils; \
+    rm -rf /var/lib/apt/lists/*
+
+# 1b) Install Angry IP Scanner from GitHub release (.deb)
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates curl; \
+    curl -fsSL -o /tmp/ipscan.deb \
+      "https://github.com/angryip/ipscan/releases/download/${IPSCAN_VERSION}/ipscan_${IPSCAN_VERSION}_amd64.deb"; \
+    dpkg -i /tmp/ipscan.deb || apt-get -f install -y; \
+    rm -f /tmp/ipscan.deb; \
+    rm -rf /var/lib/apt/lists/*
 
 # 2) Install Google Chrome
-RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub \
-      | gpg --dearmor > /usr/share/keyrings/google-archive-keyring.gpg && \
+RUN set -eux; \
+    wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub \
+      | gpg --dearmor > /usr/share/keyrings/google-archive-keyring.gpg; \
     echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-archive-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" \
-      > /etc/apt/sources.list.d/google-chrome.list && \
-    apt-get update && apt-get install -y --no-install-recommends google-chrome-stable && \
-    rm -rf /var/lib/apt/lists/* && \
+      > /etc/apt/sources.list.d/google-chrome.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends google-chrome-stable; \
+    rm -rf /var/lib/apt/lists/*; \
     sed -i 's|HERE/chrome"|HERE/chrome" --no-sandbox --disable-dev-shm-usage --disable-gpu|g' \
       /opt/google/chrome/google-chrome
 
 # 3) Desktop Icons
+# - Removed Wireshark from desktop
+# - Added Angry IP Scanner to desktop
 RUN mkdir -p /root/Desktop && \
-    cat > /root/Desktop/wireshark.desktop <<'EOF'
-[Desktop Entry]
-Type=Application
-Name=Wireshark
-Exec=wireshark
-Icon=wireshark
-Categories=Network;
-EOF
-RUN chmod +x /root/Desktop/wireshark.desktop
-
-# Angry IP Scanner desktop icon (may be "ipscan" depending on distro)
-RUN cat > /root/Desktop/angry-ip-scanner.desktop <<'EOF'
+    cat > /root/Desktop/angry-ip-scanner.desktop <<'EOF'
 [Desktop Entry]
 Type=Application
 Name=Angry IP Scanner
 Exec=ipscan
 Icon=ipscan
 Categories=Network;
+Terminal=false
 EOF
 RUN chmod +x /root/Desktop/angry-ip-scanner.desktop
+
+# 3b) Update LXDE menu (ensure new apps show up)
+RUN update-desktop-database /usr/share/applications || true
 
 # 4) noVNC default landing page (autoconnect + scaling)
 RUN echo '<html><head><meta http-equiv="refresh" content="0; url=vnc.html?autoconnect=true&resize=scale"></head></html>' \
@@ -139,6 +158,7 @@ vncserver "${DISPLAY}" \
 # Initialize Wine on first boot (needs DISPLAY/X available)
 if [ ! -d /root/.wine ]; then
   echo "Initializing Wine prefix..."
+  # Run in background so it doesn't block boot
   (export DISPLAY="${DISPLAY}"; wineboot --init >/tmp/wineboot.log 2>&1 || true) &
 fi
 
