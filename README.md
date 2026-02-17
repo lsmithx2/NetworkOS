@@ -10,15 +10,15 @@
 
 ## 🚀 Overview
 
-**NetworkOS** is a browser-accessible Linux desktop (LXDE) designed for:
+**NetworkOS** is a browser-accessible Linux desktop (LXDE) built for:
 
 - 🌐 Network analysis  
 - 🔐 Security testing  
-- 🖥 Sysadmin tasks  
+- 🖥 Sysadmin operations  
 - 🧪 Lab environments  
 - 🪟 Running Windows tools via Wine  
 
-Everything runs inside a Docker container and is accessible via **noVNC** in your browser.
+Everything runs inside a Docker container and is accessed via **noVNC** in your browser.
 
 ---
 
@@ -28,8 +28,10 @@ Everything runs inside a Docker container and is accessible via **noVNC** in you
 - LXDE lightweight GUI
 - Browser access via noVNC
 - Custom wallpaper support
-- Angry IP Scanner shortcut on desktop
+- Angry IP Scanner desktop shortcut
 - Auto-scaling display
+
+---
 
 ## 🌐 Network Toolkit
 
@@ -39,10 +41,10 @@ Everything runs inside a Docker container and is accessible via **noVNC** in you
 - `arp-scan`
 - `netdiscover`
 - `fping`
-- Angry IP Scanner (GUI)
+- **Angry IP Scanner (GUI)**
 
 ### Packet Analysis
-- `Wireshark`
+- Wireshark (installed)
 - `tcpdump`
 - `tshark`
 - `tcpflow`
@@ -56,7 +58,7 @@ Everything runs inside a Docker container and is accessible via **noVNC** in you
 - `dnsutils`
 - `whois`
 
-### Network Utilities
+### Utilities
 - `netcat`
 - `socat`
 - `ethtool`
@@ -66,37 +68,93 @@ Everything runs inside a Docker container and is accessible via **noVNC** in you
 
 ---
 
-# 🌍 Browsers
+# 🪟 Wine & Windows Application Support
 
-- Firefox
-- Google Chrome
+Wine is fully configured with GUI management tools.
+
+## Installed Wine Tools
+
+- **Winecfg** (Wine configuration)
+- **Wine File Manager**
+- **Winetricks (GUI)**
+- **Q4Wine (Wine environment manager)**
+- **PlayOnLinux (installation wizard)**
+
+These tools allow users to:
+
+- Install Windows applications via GUI
+- Manage separate Wine prefixes
+- Install .NET / DirectX runtimes
+- Configure DLL overrides
+- Switch Windows versions
 
 ---
 
-# 🪟 Windows Application Support
+## Running Windows Applications
 
-- Wine (64-bit + 32-bit)
-- Winetricks
-- Suitable for many legacy Windows networking tools
+### Install via GUI
+Use:
+- PlayOnLinux
+- Q4Wine
+- Winetricks GUI
+
+### Manual install
+```bash
+wine installer.exe
+```
+
+### Launch application
+```bash
+wine program.exe
+```
+
+Wine prefix is stored at:
+
+```
+/root/.wine
+```
+
+Persist `/root` to retain installations.
+
+---
+
+# 🔐 noVNC Password Protection
+
+NetworkOS uses **nginx-based Basic Authentication** in front of noVNC.
+
+To enable:
+
+```bash
+docker run -d \
+  -p 8080:8080 \
+  -e NOVNC_USER=admin \
+  -e NOVNC_PASSWORD=SuperSecret123 \
+  --name networkos \
+  networkos
+```
+
+You will see a browser login prompt.
+
+If `NOVNC_PASSWORD` is not set, authentication is disabled.
 
 ---
 
 # 🚀 Quick Start
 
-## 🔨 Build
+## Build
 
 ```bash
 docker build -t networkos .
 ```
 
----
-
-## ▶ Run (Basic)
+## Run
 
 ```bash
 docker run -d \
   -p 8080:8080 \
-  --name networkos-lab \
+  --cap-add NET_ADMIN \
+  --cap-add NET_RAW \
+  --name networkos \
   networkos
 ```
 
@@ -108,74 +166,46 @@ http://localhost:8080
 
 ---
 
-# 🔐 Enable Password Protection (Recommended)
-
-```bash
-docker run -d \
-  -p 8080:8080 \
-  -e NOVNC_USER=admin \
-  -e NOVNC_PASSWORD=SuperSecret123 \
-  --name networkos-lab \
-  networkos
-```
-
-If `NOVNC_PASSWORD` is not set, noVNC runs without authentication.
-
-⚠ If exposing publicly, use HTTPS via reverse proxy and IP restrictions.
-
----
-
 # 💾 Persistence
+
+To persist desktop data, Wine installs, browsers, etc:
 
 ```bash
 docker run -d \
   -p 8080:8080 \
   -v $(pwd)/networkos_data:/root \
   -e NOVNC_PASSWORD=mypass \
-  --name networkos-lab \
-  networkos
-```
-
-This preserves:
-- Desktop files
-- Wine installs
-- Browser data
-- User configs
-
----
-
-# 🐳 Recommended Docker Flags
-
-Some tools require extra capabilities:
-
-```bash
-docker run -d \
-  -p 8080:8080 \
-  --cap-add NET_ADMIN \
-  --cap-add NET_RAW \
-  networkos
-```
-
-To scan the host LAN (Linux only):
-
-```bash
-docker run -d \
-  --network host \
-  --cap-add NET_ADMIN \
-  --cap-add NET_RAW \
+  --name networkos \
   networkos
 ```
 
 ---
 
-# ☸ Kubernetes / Northflank / Cloud Notes
+# 🐳 Required Docker Capabilities
 
-This image is **heavy** (full desktop + Chrome + Firefox + Wine + Java).
+Some tools require extra privileges:
 
-### Recommended minimum resources:
+```bash
+--cap-add NET_ADMIN
+--cap-add NET_RAW
+```
 
-- **4GB RAM minimum**
-- **6–8GB recommended**
+To scan host LAN (Linux only):
+
+```bash
+--network host
+```
+
+---
+
+# ☸ Kubernetes / Northflank / Cloud Deployments
+
+This image is resource-heavy.
+
+### Minimum recommended resources:
+
+- 4GB RAM minimum
+- 6–8GB recommended
 - 2 vCPU minimum
 
 If you see pods marked:
@@ -184,13 +214,9 @@ If you see pods marked:
 Evicted
 ```
 
-It is almost always due to:
+It is typically due to memory pressure.
 
-- Memory pressure (OOM)
-- Node disk pressure
-- Resource limits too low
-
-### Recommended Kubernetes memory request/limit:
+### Suggested resource limits:
 
 ```yaml
 resources:
@@ -204,65 +230,44 @@ resources:
 
 ---
 
-# 🏥 Optional Healthcheck
+# ⚠ Performance Notes
 
-Recommended addition to Dockerfile:
+High memory consumers:
 
-```dockerfile
-HEALTHCHECK --interval=30s --timeout=5s \
-  CMD curl -f http://localhost:8080 || exit 1
-```
-
----
-
-# ⚠ Performance Considerations
-
-Running a full GUI desktop inside Kubernetes is resource-intensive.
-
-High RAM consumers:
 - Chrome
 - Firefox
 - Wine
 - Java (Angry IP Scanner)
 - Wireshark GUI
 
----
+For production, consider a lighter variant without:
 
-# 🪟 Running Windows Tools
-
-```bash
-wine mytool.exe
-```
-
-Wine data lives in:
-
-```
-/root/.wine
-```
-
-Persist `/root` to keep installations.
+- Chrome
+- Wine
+- Wireshark GUI
 
 ---
 
 # 🔒 Security Notes
 
-- VNC server runs without internal password.
-- noVNC can be protected with `NOVNC_PASSWORD`.
-- For internet exposure:
-  - Use HTTPS reverse proxy
+- VNC runs internally without password.
+- nginx protects noVNC when `NOVNC_PASSWORD` is set.
+- Always use HTTPS when exposing publicly.
+- Recommended:
+  - Reverse proxy
+  - VPN
   - IP allowlisting
-  - VPN-only access
   - Cloudflare Zero Trust
 
 ---
 
-# 🎯 Use Cases
+# 🧪 Use Cases
 
-- Network penetration testing lab
-- Remote Wireshark workstation
-- Vendor Windows utilities via Wine
-- Training environments
-- Temporary troubleshooting desktop
+- Network lab environment
+- Remote troubleshooting desktop
+- Windows-only vendor tools via Wine
+- Security training lab
+- Temporary forensic workstation
 
 ---
 
@@ -274,12 +279,10 @@ After running:
 http://your-server-ip:8080
 ```
 
-Login prompt appears if `NOVNC_PASSWORD` is set.
+Login prompt appears if password is enabled.
 
 ---
 
 # 📜 License
 
-MIT License
-
----
+MIT License (or your preferred license)
