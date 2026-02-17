@@ -21,7 +21,7 @@ ARG IPSCAN_VERSION=3.9.3
 # 0) Enable 32-bit architecture for Wine (needed for many Windows apps)
 RUN dpkg --add-architecture i386
 
-# 1) Desktop + VNC/noVNC + browsers + network toolkit + ping + wine
+# 1) Desktop + VNC/noVNC + browsers + network toolkit + ping + wine + Wine GUIs
 # Fixes:
 # - enable Universe (masscan often lives there)
 # - preseed wireshark prompt (even if not on desktop, package can prompt)
@@ -53,6 +53,8 @@ RUN set -eux; \
       openjdk-17-jre \
       # Wine (Windows apps) + common runtime deps
       wine64 wine32 winetricks cabextract fonts-wine winbind \
+      # Wine GUI front-ends (helps users install/manage apps)
+      q4wine playonlinux \
       # Wine GUI/runtime deps that often fix "wine not working" in containers
       libgl1 libgl1-mesa-dri libasound2 libasound2-plugins libpulse0 \
       fonts-dejavu-core fonts-dejavu-extra \
@@ -87,8 +89,8 @@ RUN set -eux; \
       /opt/google/chrome/google-chrome
 
 # 3) Desktop Icons
-# - Removed Wireshark from desktop
-# - Added Angry IP Scanner to desktop
+# - Angry IP Scanner on desktop
+# - Wine helpers on desktop (GUI-friendly for installs/config)
 RUN mkdir -p /root/Desktop && \
     cat > /root/Desktop/angry-ip-scanner.desktop <<'EOF'
 [Desktop Entry]
@@ -101,7 +103,62 @@ Terminal=false
 EOF
 RUN chmod +x /root/Desktop/angry-ip-scanner.desktop
 
-# 3b) Update LXDE menu (ensure new apps show up)
+RUN cat > /root/Desktop/winecfg.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Wine Configuration
+Exec=winecfg
+Icon=wine
+Categories=Wine;
+Terminal=false
+EOF
+RUN chmod +x /root/Desktop/winecfg.desktop
+
+RUN cat > /root/Desktop/winefile.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Wine File Manager
+Exec=winefile
+Icon=wine
+Categories=Wine;
+Terminal=false
+EOF
+RUN chmod +x /root/Desktop/winefile.desktop
+
+RUN cat > /root/Desktop/winetricks.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Winetricks (GUI)
+Exec=winetricks --gui
+Icon=wine
+Categories=Wine;
+Terminal=false
+EOF
+RUN chmod +x /root/Desktop/winetricks.desktop
+
+RUN cat > /root/Desktop/q4wine.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Q4Wine (Wine Manager)
+Exec=q4wine
+Icon=q4wine
+Categories=Wine;
+Terminal=false
+EOF
+RUN chmod +x /root/Desktop/q4wine.desktop
+
+RUN cat > /root/Desktop/playonlinux.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=PlayOnLinux (Install Wizard)
+Exec=playonlinux
+Icon=playonlinux
+Categories=Wine;
+Terminal=false
+EOF
+RUN chmod +x /root/Desktop/playonlinux.desktop
+
+# 3b) Update menu caches (ensure new apps show up)
 RUN update-desktop-database /usr/share/applications || true
 
 # 4) noVNC default landing page (autoconnect + scaling)
