@@ -42,7 +42,7 @@ Everything runs inside a Docker container and is accessible via **noVNC** in you
 - Angry IP Scanner (GUI)
 
 ### Packet Analysis
-- Wireshark (installed, not pinned to desktop)
+- `Wireshark`
 - `tcpdump`
 - `tshark`
 - `tcpflow`
@@ -225,11 +225,6 @@ High RAM consumers:
 - Wine
 - Java (Angry IP Scanner)
 - Wireshark GUI
-
-For production environments, consider creating:
-
-- `networkos-lite` (no Wine, no Chrome, no Wireshark GUI)
-- `networkos-full` (complete lab image)
 
 ---
 
